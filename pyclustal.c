@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "clustal-omega.h"
 
+static PyObject *AlignError;
 static PyObject * pyclustal_getAlign(PyObject *self, PyObject *args){
     const char *filepath;
     mseq_t *prMSeq = NULL;
@@ -16,8 +17,14 @@ static PyObject * pyclustal_getAlign(PyObject *self, PyObject *args){
     SetDefaultAlnOpts(&rAlnOpts);
     InitClustalOmega(iThreads);
     NewMSeq(&prMSeq);
-    ReadSequences(prMSeq, filepath, SEQTYPE_UNKNOWN, SQFILE_FASTA, 0, INT_MAX, INT_MAX);
-    Align(prMSeq, NULL, &rAlnOpts);
+    if(ReadSequences(prMSeq, filepath, SEQTYPE_UNKNOWN, SQFILE_FASTA, 0, INT_MAX, INT_MAX) == -1){
+        PyErr_SetString(PyExc_IOError, "Failed to open the File");
+        return NULL;
+    }
+    if(Align(prMSeq, NULL, &rAlnOpts) == -1){
+        PyErr_SetString(AlignError, "Failed to align the sequences");
+        return NULL;
+    }
     result = PyList_New(prMSeq->nseqs);
     for(iAux = 0; iAux < prMSeq->nseqs; iAux++){
         PyList_SetItem(result, iAux, Py_BuildValue("{s:s,s:s,s:s,s:s}",
@@ -37,7 +44,13 @@ static PyMethodDef pyclustal_methods[] = {
 };
 
 PyMODINIT_FUNC initpyclustal(void){
-    Py_InitModule("pyclustal", pyclustal_methods);
+    PyObject *m;
+    m = Py_InitModule("pyclustal", pyclustal_methods);
+    if (m == NULL)
+        return;
+    AlignError = PyErr_NewException("pyclustal.AlignError", NULL, NULL);
+    Py_INCREF(AlignError);
+    PyModule_AddObject(m, "AlignError", AlignError);
 }
 
 

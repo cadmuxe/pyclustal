@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 from distutils.core import setup, Extension
 modulel = Extension('pyclustal',
-                    include_dirs = ['clustal-omega/'],
+                    include_dirs = ['/usr/local/include/clustalo/'],
                     libraries = ['clustalo'],
-                    library_dirs=['clustal-omega/'],
+                    library_dirs=['/usr/local/lib/'],
                     #extra_compile_args = ['-fopenmp'],
                     #extra_link_args = ['-fopenmp'],
                     sources = ['pyclustal.c'])
