@@ -5,7 +5,7 @@
 
 static PyObject *AlignError;
 static PyObject * pyclustal_getAlign(PyObject *self, PyObject *args){
-    const char *filepath;/*{{{*/
+    char *filepath;/*{{{*/
     mseq_t *prMSeq = NULL;
     int iThreads = 1;
     opts_t rAlnOpts;
@@ -44,8 +44,48 @@ typedef struct {
     opts_t alnOpt; 
 } AlignOptions;
 
+static PyObject * pyclustal_Align(PyObject *self, PyObject *args){
+    char *filepath;/*{{{*/
+    mseq_t *prMSeq = NULL;
+    int iThreads = 1;
+    int iAux;
+    AlignOptions *opt = NULL;
+    PyObject *result = NULL;
+    if (!PyArg_ParseTuple(args, "sO", &filepath, &opt))
+        return NULL;
+
+    printf("OK\n");
+    fflush(stdout);
+
+    LogDefaultSetup(&rLog);
+    InitClustalOmega(iThreads);
+    NewMSeq(&prMSeq);
+    if(ReadSequences(prMSeq, filepath, SEQTYPE_UNKNOWN, SQFILE_FASTA, 0, INT_MAX, INT_MAX) == -1){
+        PyErr_SetString(PyExc_IOError, "Failed to open the File");
+        return NULL;
+    }
+    if(Align(prMSeq, NULL, &(opt->alnOpt)) == -1){
+        PyErr_SetString(AlignError, "Failed to align the sequences");
+        return NULL;
+    }
+    result = PyList_New(prMSeq->nseqs);
+    for(iAux = 0; iAux < prMSeq->nseqs; iAux++){
+        PyList_SetItem(result, iAux, Py_BuildValue("{s:s,s:s,s:s,s:s}",
+                    "name",     prMSeq->sqinfo[iAux].name,
+                    "desc",     prMSeq->sqinfo[iAux].desc,
+                    "origin",   prMSeq->orig_seq[iAux],
+                    "seq",      prMSeq->seq[iAux]
+                    ));
+    }
+    FreeMSeq(&prMSeq);
+    return result;
+
+}
+
+
 static void AlignOptions_dealloc(AlignOptions *self){
-    int i = 0;/*{{{*/
+    /*{{{*/ 
+    int i = 0;
     PyMem_Free(self->alnOpt.pcDistmatInfile);
     PyMem_Free(self->alnOpt.pcDistmatOutfile);
     PyMem_Free(self->alnOpt.pcClustfile);
@@ -155,6 +195,155 @@ static PyMemberDef AlignOptions_members[]={
     {NULL}
 };/*}}}*/
 
+static int uti_PyString_to_pchar(char **ppchar, PyObject *value){
+    int size = 0;/*{{{*/
+    if (!PyString_Check(value)){
+        PyErr_SetString(PyExc_TypeError, "The attribute must be string");
+        return -1;
+    }
+    if (value == NULL){
+        PyErr_SetString(PyExc_TypeError, "The attribute can not be None");
+        return -1;
+    }
+    size = PyString_Size(value) + 1; // extra one is for sentinel
+    if (size == 0){
+        PyMem_Free(*ppchar);
+        (*ppchar) = NULL;
+    }
+    else{
+        if((*ppchar) == NULL)
+            (*ppchar) = PyMem_New(char, size);
+        else
+            (*ppchar) = PyMem_Resize((*ppchar), char, size);
+        memcpy((*ppchar), PyString_AsString(value), size);
+    }
+    return 0;
+}/*}}}*/
+
+static PyObject *uti_pchar_toPyString(char *pchar){
+    if(pchar == NULL)
+        PyString_FromString("");
+    else
+        return PyString_FromString(pchar);
+}
+
+static int AlignOptions_setDistmatInfile(AlignOptions *self, PyObject *value, void *closure){
+    if(uti_PyString_to_pchar(&(self->alnOpt.pcDistmatInfile), value) == -1)
+        return -1;
+    return 0;
+}
+static PyObject * AlignOptions_getDistmatInfile(AlignOptions *self, void *closure){
+    return uti_pchar_toPyString(self->alnOpt.pcDistmatInfile);
+}
+
+static int AlignOptions_setDistmatOutfile(AlignOptions *self, PyObject *value, void *closure){
+    if(uti_PyString_to_pchar(&(self->alnOpt.pcDistmatOutfile), value) == -1)
+        return -1;
+    return 0;
+}
+static PyObject * AlignOptions_getDistmatOutfile(AlignOptions *self, void *closure){
+    return uti_pchar_toPyString(self->alnOpt.pcDistmatOutfile);
+}
+
+static int AlignOptions_setClustfile(AlignOptions *self, PyObject *value, void *closure){
+    if(uti_PyString_to_pchar(&(self->alnOpt.pcClustfile), value) == -1)
+        return -1;
+    return 0;
+}
+static PyObject * AlignOptions_getClustfile(AlignOptions *self, void *closure){
+    return uti_pchar_toPyString(self->alnOpt.pcClustfile);
+}
+
+static int AlignOptions_setGuidetreeOutfile(AlignOptions *self, PyObject *value, void *closure){
+    if(uti_PyString_to_pchar(&(self->alnOpt.pcGuidetreeOutfile), value) == -1)
+        return -1;
+    return 0;
+}
+static PyObject * AlignOptions_getGuidetreeOutfile(AlignOptions *self, void *closure){
+    return uti_pchar_toPyString(self->alnOpt.pcGuidetreeOutfile);
+}
+
+static int AlignOptions_setGuidetreeInfile(AlignOptions *self, PyObject *value, void *closure){
+    if(uti_PyString_to_pchar(&(self->alnOpt.pcGuidetreeInfile), value) == -1)
+        return -1;
+    return 0;
+}
+static PyObject * AlignOptions_getGuidetreeInfile(AlignOptions *self, void *closure){
+    return uti_pchar_toPyString(self->alnOpt.pcGuidetreeInfile);
+}
+
+static int AlignOptions_setHMMInput(AlignOptions *self, PyObject *value, void *closure){
+    int i,size;
+	size = self->alnOpt.iHMMInputFiles;
+	// Free all the space
+	for(i = 0; i < size; i++){
+		PyMem_Free(self->alnOpt.ppcHMMInput[i]);
+	}
+	PyMem_Free(self->alnOpt.ppcHMMInput);
+
+	size = PyTuple_Size(value);
+    printf("OK\n");
+	self->alnOpt.iHMMInputFiles = size;
+	if(size ==0 )
+		self->alnOpt.ppcHMMInput = NULL;
+	else{
+		self->alnOpt.ppcHMMInput = PyMem_Malloc(sizeof(char*) *  size);
+        memset(self->alnOpt.ppcHMMInput, 0, sizeof(char*) *  size);
+		for(i = 0; i < size; i++){
+    			if(uti_PyString_to_pchar(&(self->alnOpt.ppcHMMInput[i]), PyTuple_GetItem(value,i)) == -1)
+        			return -1;
+		}
+	}
+return 0;
+}
+
+static PyObject * AlignOptions_getHMMInput(AlignOptions *self, void *closure){
+    int i;
+    PyObject *result;
+    int size = self->alnOpt.iHMMInputFiles;
+    result = PyTuple_New(size);
+    if(size > 0){
+        for(i = 0; i < size; i++){
+		PyTuple_SetItem(result, i, uti_pchar_toPyString(self->alnOpt.ppcHMMInput[i]));
+	}
+    }
+return result;
+}
+
+
+
+
+
+
+
+static PyGetSetDef AlignOptions_getseters[] ={
+    {"distmatInfile", 
+        (getter)AlignOptions_getDistmatInfile, 
+        (setter)AlignOptions_setDistmatInfile,
+        "distance matrix input file", NULL},
+    {"distmatOutfile", 
+        (getter)AlignOptions_getDistmatOutfile, 
+        (setter)AlignOptions_setDistmatOutfile,
+        "distance matrix output file", NULL},
+    {"clustfile", 
+        (getter)AlignOptions_getClustfile, 
+        (setter)AlignOptions_setClustfile,
+        "file with clustering information", NULL},
+    {"guidetreeOutfile", 
+        (getter)AlignOptions_getGuidetreeOutfile, 
+        (setter)AlignOptions_setGuidetreeOutfile,
+        "guidetree output file", NULL},
+    {"guidetreeInfile", 
+        (getter)AlignOptions_getGuidetreeInfile, 
+        (setter)AlignOptions_setGuidetreeInfile,
+        "guidetree input file", NULL},
+    {"HMMInput", 
+        (getter)AlignOptions_getHMMInput, 
+        (setter)AlignOptions_setHMMInput,
+        "HMM input files. index range: 0..iHMMInputFiles", NULL},
+    {NULL}
+};
+
 static PyMethodDef AlignOptions_methods[]={
     {NULL}
 };
@@ -187,9 +376,9 @@ static PyTypeObject AlignOptionsType={
     0,                          /*tp_weaklistoffset*/
     0,                          /*tp_iter*/
     0,                          /*tp_iternext*/
-    AlignOptions_methods,              /*tp_methods*/
-    AlignOptions_members,              /*tp_members*/
-    0,                          /*tp_getset*/
+    AlignOptions_methods,       /*tp_methods*/
+    AlignOptions_members,       /*tp_members*/
+    AlignOptions_getseters,     /*tp_getset*/
     0,                          /*tp_base*/
     0,                          /*tp_dict*/
     0,                          /*tp_descr_get*/
@@ -203,29 +392,10 @@ static PyTypeObject AlignOptionsType={
 static PyMethodDef pyclustal_methods[] = {
     {"getAlign", (PyCFunction) pyclustal_getAlign, METH_VARARGS,
     "getAlign(filename) -> result \nGet Multiple sequence alignment. "},
+    {"Align", (PyCFunction) pyclustal_Align, METH_VARARGS,
+    "Align(filename, alnOpt) -> result \n Same as getAlign, but with customer alnOpt(AlginOptions)"},
     {NULL, NULL, 0, NULL}
 };
-
-static int uti_convert_string(char **ppchar, PyObject *value){
-    if (!PyString_Check(value)){
-        PyErr_SetString(PyExc_TypeError, "The attribute must be string");
-    }
-    if (value == NULL){
-        PyErr_SetString(PyExc_TypeError, "The attribute can not be None");
-        return -1;
-    }
-    if( PyString_Size(value) == 0){
-        PyMem_Free(*ppchar);
-        (*ppchar) = NULL;
-    }
-    else{
-        ;
-    }
-}
-
-static int AlignOptions_setDistmatInfile(AlignOptions *self, PyObject *value, void *closure){
-    
-}
 
 PyMODINIT_FUNC initpyclustal(void){
     PyObject *m;
